@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="./script/component.js" type="module"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        #controls {
+            position: absolute;
+            left: 10px;
+            top: 10px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        #info {
+            position: fixed;
+            right: 10px;
+            top: 10px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+        }
+
+        pink-trombone {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="controls">
+        <select id="microphoneSelect" hidden>
+            <optgroup id="microphoneOptGroup" label="select microphone"></optgroup>
+        </select>
+        <button id="toggleMicrophone">enable microphone</button>
+        <button id="debugMicrophone" hidden>listen to microphone</button>
+    </div>
+
+    <div id="info">
+        <p>Frequency: <span id="frequency">--</span></p>
+        <p>Tenseness: <span id="tenseness">--</span></p>
+    </div>
+
+    <pink-trombone></pink-trombone>
+
+    <script>
+        const pinkTromboneElement = document.querySelector("pink-trombone");
+        const frequencyElement = document.getElementById("frequency");
+        const tensenessElement = document.getElementById("tenseness");
+
+        pinkTromboneElement.addEventListener("load", async () => {
+            await pinkTromboneElement.setAudioContext();
+            pinkTromboneElement.enableUI();
+            pinkTromboneElement.startUI();
+            pinkTromboneElement.connect(pinkTromboneElement.audioContext.destination);
+            window.audioContext = pinkTromboneElement.audioContext;
+
+            // Listen for parameter updates
+            pinkTromboneElement.addEventListener("setParameter", (event) => {
+                const { parameterName, newValue } = event.detail;
+                if (parameterName == "frequency") {
+                    frequencyElement.textContent = newValue.toFixed(2);
+                } else if (parameterName == "tenseness") {
+                    tensenessElement.textContent = newValue.toFixed(2);
+                } else if (parameterName == "loudness") {
+                    loudnessElement.textContent = newValue.toFixed(2);
+                }
+            });
+        });
+
+        // Event listener for glottis gamepad input
+        pinkTromboneElement.addEventListener("gamepadInputGlottis", (event) => {
+    console.log("Received gamepadInputGlottis event:", event.detail);
+
+    const { frequency, tenseness } = event.detail;
+
+    // Update parameters and UI elements
+    pinkTromboneElement.parameters.frequency.value = frequency;
+    pinkTromboneElement.parameters.tenseness.value = tenseness;
+
+    pinkTromboneElement.parameters.frequency.linearRampToValueAtTime(
+        frequency, 
+        pinkTromboneElement.audioContext.currentTime + 0.1
+    );
+    pinkTromboneElement.parameters.tenseness.linearRampToValueAtTime(
+        tenseness, 
+        pinkTromboneElement.audioContext.currentTime + 0.1
+    );
+
+    // Update the displayed values
+    frequencyElement.textContent = frequency.toFixed(2);
+    tensenessElement.textContent = tenseness.toFixed(2);
+});
+
+        // Event listener for tract gamepad input
+        pinkTromboneElement.addEventListener("gamepadInputTract", (event) => {
+            const { index, diameter } = event.detail;
+
+            pinkTromboneElement.parameters.tongue.index.value = index;
+            pinkTromboneElement.parameters.tongue.diameter.value = diameter;
+
+            pinkTromboneElement.parameters.tongue.index.linearRampToValueAtTime(
+                index, 
+                pinkTromboneElement.audioContext.currentTime + 0.1
+            );
+            pinkTromboneElement.parameters.tongue.diameter.linearRampToValueAtTime(
+                diameter, 
+                pinkTromboneElement.audioContext.currentTime + 0.1
+            );
+        });
+    </script>
+
+    <script>
+        var mediaStream;
+        var mediaStreamSourceNode;
+        const toggleMicrophoneButton = document.getElementById("toggleMicrophone");
+        toggleMicrophoneButton.addEventListener("click", async () => {
+            if (isMicrophoneOn()) {
+                stopMicrophone();
+            } else {
+                await getMicrophone();
+            }
+        });
+
+        const isMicrophoneOn = () => {
+            return Boolean(mediaStream);
+        };
+
+        const getMicrophone = async () => {
+            stopMicrophone();
+
+            mediaStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    deviceId: microphoneSelect.value ? microphoneSelect.value : true,
+                    autoGainControl: false,
+                    noiseSuppression: false,
+                    echoCancellation: false,
+                },
+            });
+            mediaStreamSourceNode = audioContext.createMediaStreamSource(mediaStream);
+            mediaStreamSourceNode.connect(pinkTromboneElement.pinkTrombone._pinkTromboneNode);
+            pinkTromboneElement.pinkTrombone._fricativeFilter.disconnect();
+            pinkTromboneElement.pinkTrombone._aspirateFilter.disconnect();
+
+            debugMicrophoneButton.removeAttribute("hidden");
+            toggleMicrophoneButton.innerText = "disable microphone";
+        };
+
+        const stopMicrophone = () => {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach((track) => track.stop());
+                mediaStream = undefined;
+                mediaStreamSourceNode?.disconnect();
+                mediaStreamSourceNode = undefined;
+                isListeningToMicrophone = false;
+                debugMicrophoneButton.setAttribute("hidden", "");
+                toggleMicrophoneButton.innerText = "enable microphone";
+
+                pinkTromboneElement.pinkTrombone._fricativeFilter.connect(
+                    pinkTromboneElement.pinkTrombone._pinkTromboneNode.noise
+                );
+                pinkTromboneElement.pinkTrombone._aspirateFilter.connect(
+                    pinkTromboneElement.pinkTrombone._pinkTromboneNode.noise
+                );
+            }
+        };
+
+        const microphoneSelect = document.getElementById("microphoneSelect");
+        const microphoneOptGroup = document.getElementById("microphoneOptGroup");
+        const updateMicrophoneSelect = async () => {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const microphones = devices.filter((device) => device.kind === "audioinput");
+            if (microphones.length > 0) {
+                microphoneSelect.removeAttribute("hidden");
+                microphoneOptGroup.innerHTML = "";
+                microphones.forEach((microphone) => {
+                    microphoneOptGroup.appendChild(new Option(microphone.label, microphone.deviceId));
+                });
+            } else {
+                microphoneSelect.setAttribute("hidden", "");
+            }
+        };
+        navigator.mediaDevices.addEventListener("devicechange", () => {
+            updateMicrophoneSelect();
+        });
+        updateMicrophoneSelect();
+
+        microphoneSelect.addEventListener("input", async () => {
+            if (isMicrophoneOn()) {
+                await getMicrophone();
+            }
+        });
+
+        var isListeningToMicrophone = false;
+        const debugMicrophoneButton = document.getElementById("debugMicrophone");
+        debugMicrophoneButton.addEventListener("click", () => {
+            if (mediaStreamSourceNode) {
+                isListeningToMicrophone = !isListeningToMicrophone;
+                if (isListeningToMicrophone) {
+                    mediaStreamSourceNode.connect(audioContext.destination);
+                    debugMicrophoneButton.innerText = "stop listening to microphone";
+                } else {
+                    mediaStreamSourceNode.disconnect(audioContext.destination);
+                    debugMicrophoneButton.innerText = "listen to microphone";
+                }
+            }
+        });
+    </script>
+</body>
+</html>
