@@ -203,8 +203,8 @@ class GlottisUI {
             return;
         }
 
-        const rightStickX = gamepad.axes[5] || 0; // Right stick horizontal axis
-        const rightStickY = gamepad.axes[2] || 0; // Right stick vertical axis
+        const rightStickX = gamepad.axes[2] || 0; // Right stick horizontal axis
+        const rightStickY = gamepad.axes[3] || 0; // Right stick vertical axis
 
         // Normalize axis values based on the provided ranges
         const normalizeAxis = (value, min, max) => {
@@ -212,14 +212,14 @@ class GlottisUI {
         };
 
         // Axis ranges
-        const axis2Min = -0.65;
-        const axis2Max = 0.78;
-        const axis5Min = -0.67;
-        const axis5Max = 0.76;
+        const axis2Min = -1.0;
+        const axis2Max = 1.0;
+        const axis3Min = -0.94;
+        const axis3Max = 0.95;
 
         // Calculate interpolation values
         const interpolationRight = {
-            horizontal: normalizeAxis(rightStickX, axis5Min, axis5Max), // Horizontal control (frequency)
+            horizontal: normalizeAxis(rightStickX, axis3Min, axis3Max), // Horizontal control (frequency)
             vertical: normalizeAxis(rightStickY, axis2Min, axis2Max), // Vertical control (tenseness)
         };
 
@@ -260,7 +260,6 @@ class GlottisUI {
                 tenseness: tenseness,
             };
 
-            console.log("Dispatching gamepadInputGlottis with frequency:", frequency, "and tenseness:", tenseness);
             Object.keys(parameters).forEach(parameterName => {
                 this._container.dispatchEvent(new CustomEvent("setParameter", {
                     bubbles: true,

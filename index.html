@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <script src="./script/component.js" type="module"></script>
     <style>
@@ -38,6 +39,7 @@
         }
     </style>
 </head>
+
 <body>
     <div id="controls">
         <select id="microphoneSelect" hidden>
@@ -50,6 +52,8 @@
     <div id="info">
         <p>Frequency: <span id="frequency">--</span></p>
         <p>Tenseness: <span id="tenseness">--</span></p>
+        <p>Radius: <span id="radius">--</span></p>
+        <p>Angle: <span id="angle">--</span></p>
     </div>
 
     <pink-trombone></pink-trombone>
@@ -58,6 +62,8 @@
         const pinkTromboneElement = document.querySelector("pink-trombone");
         const frequencyElement = document.getElementById("frequency");
         const tensenessElement = document.getElementById("tenseness");
+        const radiusElement = document.getElementById("radius");
+        const angleElement = document.getElementById("angle");
 
         pinkTromboneElement.addEventListener("load", async () => {
             await pinkTromboneElement.setAudioContext();
@@ -66,58 +72,74 @@
             pinkTromboneElement.connect(pinkTromboneElement.audioContext.destination);
             window.audioContext = pinkTromboneElement.audioContext;
 
-            // Listen for parameter updates
+            // Listen for parameter updates from GlottisUI
             pinkTromboneElement.addEventListener("setParameter", (event) => {
                 const { parameterName, newValue } = event.detail;
-                if (parameterName == "frequency") {
+                console.log(`GlottisUI setParameter: ${parameterName} = ${newValue}`);
+                if (parameterName === "frequency") {
                     frequencyElement.textContent = newValue.toFixed(2);
-                } else if (parameterName == "tenseness") {
+                } else if (parameterName === "tenseness") {
                     tensenessElement.textContent = newValue.toFixed(2);
-                } else if (parameterName == "loudness") {
-                    loudnessElement.textContent = newValue.toFixed(2);
+                }
+            });
+
+            // Listen for parameter updates from TractUI
+            pinkTromboneElement.addEventListener("setParameterTract", (event) => {
+                const { parameterName, newValue } = event.detail;
+                console.log(`TractUI setParameterTract: ${parameterName} = ${newValue}`);
+                if (parameterName === "tongue.index") {
+                    radiusElement.textContent = newValue.toFixed(2);
+                } else if (parameterName === "tongue.diameter") {
+                    angleElement.textContent = newValue.toFixed(2);
                 }
             });
         });
 
         // Event listener for glottis gamepad input
         pinkTromboneElement.addEventListener("gamepadInputGlottis", (event) => {
-    console.log("Received gamepadInputGlottis event:", event.detail);
+            console.log("Received gamepadInputGlottis event:", event.detail);
 
-    const { frequency, tenseness } = event.detail;
+            const { frequency, tenseness } = event.detail;
 
-    // Update parameters and UI elements
-    pinkTromboneElement.parameters.frequency.value = frequency;
-    pinkTromboneElement.parameters.tenseness.value = tenseness;
+            // Update parameters and UI elements
+            pinkTromboneElement.parameters.frequency.value = frequency;
+            pinkTromboneElement.parameters.tenseness.value = tenseness;
 
-    pinkTromboneElement.parameters.frequency.linearRampToValueAtTime(
-        frequency, 
-        pinkTromboneElement.audioContext.currentTime + 0.1
-    );
-    pinkTromboneElement.parameters.tenseness.linearRampToValueAtTime(
-        tenseness, 
-        pinkTromboneElement.audioContext.currentTime + 0.1
-    );
+            pinkTromboneElement.parameters.frequency.linearRampToValueAtTime(
+                frequency,
+                pinkTromboneElement.audioContext.currentTime + 0.1
+            );
+            pinkTromboneElement.parameters.tenseness.linearRampToValueAtTime(
+                tenseness,
+                pinkTromboneElement.audioContext.currentTime + 0.1
+            );
 
-    // Update the displayed values
-    frequencyElement.textContent = frequency.toFixed(2);
-    tensenessElement.textContent = tenseness.toFixed(2);
-});
+            // Update the displayed values
+            frequencyElement.textContent = frequency.toFixed(2);
+            tensenessElement.textContent = tenseness.toFixed(2);
+        });
 
         // Event listener for tract gamepad input
         pinkTromboneElement.addEventListener("gamepadInputTract", (event) => {
-            const { index, diameter } = event.detail;
+            console.log("Received gamepadInputTract event:", event.detail);
+
+            const { index, diameter, radius, angle } = event.detail;
 
             pinkTromboneElement.parameters.tongue.index.value = index;
             pinkTromboneElement.parameters.tongue.diameter.value = diameter;
 
             pinkTromboneElement.parameters.tongue.index.linearRampToValueAtTime(
-                index, 
+                index,
                 pinkTromboneElement.audioContext.currentTime + 0.1
             );
             pinkTromboneElement.parameters.tongue.diameter.linearRampToValueAtTime(
-                diameter, 
+                diameter,
                 pinkTromboneElement.audioContext.currentTime + 0.1
             );
+
+            // Update the displayed values
+            radiusElement.textContent = radius.toFixed(2);
+            angleElement.textContent = (angle * (180 / Math.PI)).toFixed(2); // Convert angle to degrees
         });
     </script>
 
@@ -218,4 +240,5 @@
         });
     </script>
 </body>
+
 </html>

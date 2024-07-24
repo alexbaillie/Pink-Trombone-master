@@ -7,23 +7,26 @@
 class TractUI {
   constructor() {
 
-        // Initialize gamepad state
-        this.gamepadIndex = null;
-        this.isGamepadActive = false;
-        this.lastTonguePosition = null;
+    this.snappingDistanceThreshold = 10;
+    this._constrictions = new Map();
 
-        // Listen for gamepad events
-        window.addEventListener("gamepadconnected", (event) => {
-            this.gamepadIndex = event.gamepad.index;
-            this.isGamepadActive = true;
-            this.updateGamepadState();
-        });
+    // Initialize gamepad state
+    this.gamepadIndex = null;
+    this.isGamepadActive = false;
+    this.lastTonguePosition = null;
 
-        window.addEventListener("gamepaddisconnected", () => {
-            this.isGamepadActive = false;
-            this.gamepadIndex = null;
-        });
-    
+    // Listen for gamepad events
+    window.addEventListener("gamepadconnected", (event) => {
+      this.gamepadIndex = event.gamepad.index;
+      this.isGamepadActive = true;
+      this.updateGamepadState();
+    });
+
+    window.addEventListener("gamepaddisconnected", () => {
+      this.isGamepadActive = false;
+      this.gamepadIndex = null;
+    });
+
     this.leftStickX = 0;
     this.leftStickY = 0;
     this._container = document.createElement("div");
@@ -183,28 +186,61 @@ class TractUI {
 
     const interpolationLeft = {
       index: Math.clamp((leftStickX + 1) / 2 * 44, 0, 44), // Assuming tract length is 44
-      diameter: Math.clamp((leftStickY + 1) / 2 * 4, 0, 4) // Assuming max diameter is 4
+      diameter: Math.clamp((leftStickY + 1) / 2 * 4, 0, 4), // Assuming max diameter is 4
+      radius: Math.sqrt(leftStickX * leftStickX + leftStickY * leftStickY), // Calculate radius
+      angle: Math.atan2(leftStickY, leftStickX) // Calculate angle in radians
     };
+
+    // Store last tongue position when set via gamepad
+    this.lastTonguePosition = interpolationLeft;
 
     this._container.dispatchEvent(new CustomEvent("gamepadInputTract", {
       bubbles: true,
       detail: interpolationLeft,
     }));
 
-    // Store last tongue position when set via gamepad
-    this.lastTonguePosition = interpolationLeft;
-
     requestAnimationFrame(() => this.updateGamepadState());
+  }
+
+
+  _isNearTongue(index, diameter) {
+    const tongue = this._processor.tract.tongue;
+    const distanceThreshold = this.snappingDistanceThreshold;
+
+    const positions = [
+      { index: tongue.range.index.minValue, diameter: tongue.range.diameter.minValue },
+      { index: tongue.range.index.maxValue, diameter: tongue.range.diameter.minValue },
+      { index: tongue.range.index.center, diameter: tongue.range.diameter.maxValue }
+    ];
+
+    for (const pos of positions) {
+      const distance = Math.sqrt(Math.pow(pos.index - index, 2) + Math.pow(pos.diameter - diameter, 2));
+      if (distance <= distanceThreshold) {
+        return pos;
+      }
+    }
+    return null;
+  }
+
+  _setTongue(event, position) {
+    const nearTongue = this._isNearTongue(position.index, position.diameter);
+    if (nearTongue) {
+      position.index = nearTongue.index;
+      position.diameter = nearTongue.diameter;
+    }
+
+    this._processor.tract.tongue.index = position.index;
+    this._processor.tract.tongue.diameter = position.diameter;
+
+    // Redraw tract to reflect changes
+    this._drawTract();
   }
 
   _startEvent(event) {
     const touchIdentifier = event instanceof Touch ? event.identifier : -1;
     if (this._touchConstrictionIndices[touchIdentifier] == undefined) {
       const position = this._getEventPosition(event);
-      const isNearTongue = this._isNearTongue(
-        position.index,
-        position.diameter
-      );
+      const isNearTongue = this._isNearTongue(position.index, position.diameter);
       if (isNearTongue) {
         this._touchConstrictionIndices[touchIdentifier] = -1;
         // Set tongue position only if not set via gamepad
@@ -238,6 +274,7 @@ class TractUI {
         // Update tongue position only if not set via gamepad
         if (!this.isGamepadActive) {
           this._setTongue(event, position);
+          
         }
       } else {
         event.target.dispatchEvent(
@@ -251,6 +288,62 @@ class TractUI {
           })
         );
       }
+    }
+  }
+
+  _endEvent(event) {
+    const touchIdentifier = event instanceof Touch ? event.identifier : -1;
+    if (this._touchConstrictionIndices[touchIdentifier] !== undefined) {
+      if (this._touchConstrictionIndices[touchIdentifier] === -1) {
+        // End tongue constriction
+        this._touchConstrictionIndices[touchIdentifier] = undefined;
+      } else {
+        // End regular constriction
+        this._constrictions.delete(touchIdentifier);
+        this._endConstriction(event);
+        event.target.dispatchEvent(
+          new CustomEvent("removeConstriction", {
+            bubbles: true,
+            detail: {
+              touchIdentifier: touchIdentifier,
+            },
+          })
+        );
+      }
+    }
+  }
+
+  _startConstriction(event) {
+    // Extract touch information and start constriction
+    const touchIdentifier = event instanceof Touch ? event.identifier : -1;
+    const position = this._getEventPosition(event);
+
+    if (this._constrictions.has(touchIdentifier)) {
+      // Handle starting of a new constriction
+      const constrictionData = this._constrictions.get(touchIdentifier);
+    }
+  }
+
+  _moveConstriction(event) {
+    // Extract touch information and update constriction
+    const touchIdentifier = event instanceof Touch ? event.identifier : -1;
+    const position = this._getEventPosition(event);
+
+    if (this._constrictions.has(touchIdentifier)) {
+      // Handle updating of constriction
+      const constrictionData = this._constrictions.get(touchIdentifier);
+      constrictionData.index = position.index;
+      constrictionData.diameter = position.diameter;
+    }
+  }
+
+  _endConstriction(event) {
+    // Extract touch information and end constriction
+    const touchIdentifier = event instanceof Touch ? event.identifier : -1;
+
+    if (this._constrictions.has(touchIdentifier)) {
+      // Handle ending of constriction
+      this._constrictions.delete(touchIdentifier);
     }
   }
 
@@ -273,7 +366,6 @@ class TractUI {
 
   _resizeCanvases() {
     for (let id in this._canvases) {
-      //this._canvases[id].style.width = this._container.offsetWidth;
       this._canvases[id].style.height = this._container.offsetHeight;
     }
   }
@@ -321,7 +413,7 @@ class TractUI {
       this._lineTo(
         index + this._processor.tract.nose.start,
         -this._processor.tract.nose.offset -
-          this._processor.tract.nose.diameter[index] * 0.9
+        this._processor.tract.nose.diameter[index] * 0.9
       );
 
     for (let index = this._processor.tract.nose.length - 1; index >= 1; index--)
@@ -430,7 +522,7 @@ class TractUI {
       this._lineTo(
         index + this._processor.tract.nose.start,
         -this._processor.tract.nose.offset -
-          this._processor.tract.nose.diameter[index] * 0.9
+        this._processor.tract.nose.diameter[index] * 0.9
       );
 
     this._moveTo(
@@ -470,7 +562,7 @@ class TractUI {
     this._drawText(
       this._processor.tract.length * 0.95,
       0.8 +
-        0.8 * this._processor.tract.diameter[this._processor.tract.length - 1],
+      0.8 * this._processor.tract.diameter[this._processor.tract.length - 1],
       " lip",
       false,
       false
@@ -509,7 +601,7 @@ class TractUI {
     this._moveTo(
       this._processor.tract.tongue.range.index.minValue,
       this._processor.tract.tongue.diameter.minValue
-    ); // diameter/2?
+    );
     for (
       let index = this._processor.tract.tongue.range.index.minValue + 1;
       index <= this._processor.tract.tongue.range.maxValue;
@@ -534,8 +626,8 @@ class TractUI {
           _index < 5
             ? this._processor.tract.tongue.range.diameter.minValue
             : _index < 8
-            ? this._processor.tract.tongue.range.diameter.center
-            : this._processor.tract.tongue.range.diameter.maxValue;
+              ? this._processor.tract.tongue.range.diameter.center
+              : this._processor.tract.tongue.range.diameter.maxValue;
 
         indexOffset *= this._processor.tract.length / 44;
 
@@ -602,7 +694,7 @@ class TractUI {
       this._lineTo(
         this._processor.tract.nose.start + index,
         -this._processor.tract.nose.offset -
-          this._processor.tract.nose.diameter[index] * 0.9
+        this._processor.tract.nose.diameter[index] * 0.9
       );
 
       this._context.stroke();
@@ -706,14 +798,14 @@ class TractUI {
     const angle =
       this._tract.angle.offset +
       (index * this._tract.angle.scale * Math.PI) /
-        (this._processor.tract.lip.start - 1);
+      (this._processor.tract.lip.start - 1);
     return angle;
   }
   _getWobble(index) {
     var wobble =
       this._processor.tract.amplitude.max[this._processor.tract.length - 1] +
       this._processor.tract.nose.amplitude.max[
-        this._processor.tract.nose.length - 1
+      this._processor.tract.nose.length - 1
       ];
     wobble *=
       (0.03 * Math.sin(2 * index - 50 * (Date.now() / 1000)) * index) /
@@ -782,7 +874,7 @@ class TractUI {
   _setTongue(event, position) {
     Object.keys(position).forEach((parameterNameSuffix) => {
       event.target.dispatchEvent(
-        new CustomEvent("setParameter", {
+        new CustomEvent("setParameterTract", {
           bubbles: true,
           detail: {
             parameterName: "tongue." + parameterNameSuffix,
@@ -820,7 +912,7 @@ class TractUI {
   }
 }
 
-Math.clamp = function(value, min = 0, max = 1) {
+Math.clamp = function (value, min = 0, max = 1) {
   return value < min ? min : value > max ? max : value;
 }
 
