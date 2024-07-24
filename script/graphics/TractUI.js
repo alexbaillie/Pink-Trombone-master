@@ -1,6 +1,10 @@
 class TractUI {
   constructor() {
 
+    this.snappingDistanceThreshold = 20;
+    this._constrictions = new Map();
+    this.initializeVowelPositions();
+
     // Initialize gamepad state
     this.gamepadIndex = null;
     this.isGamepadActive = false;
@@ -208,7 +212,65 @@ class TractUI {
     requestAnimationFrame(() => this.updateGamepadState());
   }
 
-  _startEvent(event) {
+  _isNearTongue(angle, radius) {
+    const distances = [];
+    for (const vowelPos of this.vowelPositions) {
+      const angleDifference = Math.abs(vowelPos.angle - angle);
+      const radiusDifference = Math.abs(vowelPos.radius - radius);
+      const distance = Math.sqrt(angleDifference * angleDifference + radiusDifference * radiusDifference);
+      distances.push({ distance, index: vowelPos.index, diameter: vowelPos.diameter });
+    }
+    return distances;
+  }
+
+  _softmax(distances) {
+    const scale = 20; // Scale factor for controlling the sharpness of the softmax
+    const exps = distances.map(d => Math.exp(-scale * d.distance));
+    const sumExps = exps.reduce((a, b) => a + b, 0);
+    return distances.map((d, i) => ({ ...d, weight: exps[i] / sumExps }));
+  }
+  
+  _setTongue(event, angle, radius) {
+    // Calculate distances to each vowel position
+    const distances = this._isNearTongue(angle, radius);
+  
+    // Apply softmax to these distances to determine weights
+    const weightedPositions = this._softmax(distances);
+  
+    // Compute the weighted average position based on softmax outputs
+    let weightedIndex = 0;
+    let weightedDiameter = 0;
+    weightedPositions.forEach(pos => {
+      weightedIndex += pos.index * pos.weight;
+      weightedDiameter += pos.diameter * pos.weight;
+    });
+  
+    // Create a position object with the computed weighted average index and diameter
+    const newPosition = {
+      index: weightedIndex,
+      diameter: weightedDiameter
+    };
+  
+    // Update the processor's tract tongue parameters
+    this._processor.tract.tongue.index = newPosition.index;
+    this._processor.tract.tongue.diameter = newPosition.diameter;
+  
+    // Dispatch the setParameterTract event for each parameter
+    Object.keys(newPosition).forEach(parameterNameSuffix => {
+      event.target.dispatchEvent(new CustomEvent("setParameterTract", {
+        bubbles: true,
+        detail: {
+          parameterName: "tongue." + parameterNameSuffix,
+          newValue: newPosition[parameterNameSuffix],
+        },
+      }));
+    });
+  
+    // Redraw tract to reflect changes
+    this._drawTract();
+  }
+  
+    _startEvent(event) {
     const touchIdentifier = event instanceof Touch ? event.identifier : -1;
     if (this._touchConstrictionIndices[touchIdentifier] == undefined) {
       const position = this._getEventPosition(event);
@@ -834,19 +896,19 @@ class TractUI {
     };
   }
 
-  _setTongue(event, position) {
-    Object.keys(position).forEach((parameterNameSuffix) => {
-      event.target.dispatchEvent(
-        new CustomEvent("setParameter", {
-          bubbles: true,
-          detail: {
-            parameterName: "tongue." + parameterNameSuffix,
-            newValue: position[parameterNameSuffix],
-          },
-        })
-      );
-    });
-  }
+  // _setTongue(event, position) {
+  //   Object.keys(position).forEach((parameterNameSuffix) => {
+  //     event.target.dispatchEvent(
+  //       new CustomEvent("setParameterTract", {
+  //         bubbles: true,
+  //         detail: {
+  //           parameterName: "tongue." + parameterNameSuffix,
+  //           newValue: position[parameterNameSuffix],
+  //         },
+  //       })
+  //     );
+  //   });
+  // }
 
   _endEvent(event) {
     const touchIdentifier = event instanceof Touch ? event.identifier : -1;
