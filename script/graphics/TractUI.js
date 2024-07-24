@@ -1,14 +1,5 @@
-/*
-    TODO
-        throttle value setter
-        draw background stuff
-*/
-
 class TractUI {
   constructor() {
-
-    this.snappingDistanceThreshold = 10;
-    this._constrictions = new Map();
 
     // Initialize gamepad state
     this.gamepadIndex = null;
@@ -172,6 +163,21 @@ class TractUI {
     });
   }
 
+  initializeVowelPositions() {
+    this.vowelPositions = [
+      { angle: 15, radius: 0.6 * 1.5 + 2, phoneme: "æ" }, // pat
+      { angle: 13, radius: 0.27 * 1.5 + 2, phoneme: "a" }, // part
+      { angle: 12, radius: 0 * 1.5 + 2, phoneme: "ɒ" }, // pot
+      { angle: 17.7, radius: 0.05 * 1.5 + 2, phoneme: "(ɔ)" }, // port (rounded)
+      { angle: 27, radius: 0.65 * 1.5 + 2, phoneme: "ɪ" }, // pit
+      { angle: 27.4, radius: 0.21 * 1.5 + 2, phoneme: "i" }, // peat
+      { angle: 20, radius: 1.0 * 1.5 + 2, phoneme: "e" }, // pet
+      { angle: 18.1, radius: 0.37 * 1.5 + 2, phoneme: "ʌ" }, // putt
+      { angle: 23, radius: 0.1 * 1.5 + 2, phoneme: "(u)" }, // poot (rounded)
+      { angle: 21, radius: 0.6 * 1.5 + 2, phoneme: "ə" }  // pert [should be ɜ]
+    ];
+  }
+
   updateGamepadState() {
     if (!this.isGamepadActive || this.gamepadIndex === null) return;
 
@@ -200,40 +206,6 @@ class TractUI {
     }));
 
     requestAnimationFrame(() => this.updateGamepadState());
-  }
-
-
-  _isNearTongue(index, diameter) {
-    const tongue = this._processor.tract.tongue;
-    const distanceThreshold = this.snappingDistanceThreshold;
-
-    const positions = [
-      { index: tongue.range.index.minValue, diameter: tongue.range.diameter.minValue },
-      { index: tongue.range.index.maxValue, diameter: tongue.range.diameter.minValue },
-      { index: tongue.range.index.center, diameter: tongue.range.diameter.maxValue }
-    ];
-
-    for (const pos of positions) {
-      const distance = Math.sqrt(Math.pow(pos.index - index, 2) + Math.pow(pos.diameter - diameter, 2));
-      if (distance <= distanceThreshold) {
-        return pos;
-      }
-    }
-    return null;
-  }
-
-  _setTongue(event, position) {
-    const nearTongue = this._isNearTongue(position.index, position.diameter);
-    if (nearTongue) {
-      position.index = nearTongue.index;
-      position.diameter = nearTongue.diameter;
-    }
-
-    this._processor.tract.tongue.index = position.index;
-    this._processor.tract.tongue.diameter = position.diameter;
-
-    // Redraw tract to reflect changes
-    this._drawTract();
   }
 
   _startEvent(event) {
@@ -708,6 +680,8 @@ class TractUI {
     this._context.textAlign = "center";
     this._context.globalAlpha = 0.6;
 
+    this.vowelPositions = [];
+
     [
       [15, 0.6, "æ"], // pat
       [13, 0.27, "a"], // part
@@ -724,6 +698,7 @@ class TractUI {
       const radius = position[1] * 1.5 + 2;
       const phoneme = position[2];
       this._drawText(angle, radius, phoneme, false);
+      this.vowelPositions.push({ angle, radius, phoneme });
     });
 
     this._context.globalAlpha = 0.8;
@@ -828,24 +803,12 @@ class TractUI {
       (this._tract.angle.scale * Math.PI);
     return index;
   }
+
   _getDiameter(x, y) {
     const diameter =
       (this._tract.radius - Math.sqrt(Math.pow(x, 2) + Math.pow(y, 2))) /
       this._tract.scale;
     return diameter;
-  }
-
-  _isNearTongue(index, diameter) {
-    var isTongue = true;
-    isTongue =
-      isTongue &&
-      this._processor.tract.tongue.range.index.minValue - 4 <= index &&
-      index <= this._processor.tract.tongue.range.index.maxValue + 4;
-    isTongue =
-      isTongue &&
-      this._processor.tract.tongue.range.diameter.minValue - 0.5 <= diameter &&
-      diameter <= this._processor.tract.tongue.range.diameter.maxValue + 0.5;
-    return isTongue;
   }
 
   _getEventX(event) {
@@ -874,7 +837,7 @@ class TractUI {
   _setTongue(event, position) {
     Object.keys(position).forEach((parameterNameSuffix) => {
       event.target.dispatchEvent(
-        new CustomEvent("setParameterTract", {
+        new CustomEvent("setParameter", {
           bubbles: true,
           detail: {
             parameterName: "tongue." + parameterNameSuffix,
