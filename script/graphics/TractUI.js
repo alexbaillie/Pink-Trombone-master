@@ -1,7 +1,7 @@
 class TractUI {
   constructor() {
 
-    this.snappingDistanceThreshold = 20;
+    this.snappingDistanceThreshold = 30;
     this._constrictions = new Map();
     this.initializeVowelPositions();
 
@@ -10,17 +10,9 @@ class TractUI {
     this.isGamepadActive = false;
     this.lastTonguePosition = null;
 
-    // Listen for gamepad events
-    window.addEventListener("gamepadconnected", (event) => {
-      this.gamepadIndex = event.gamepad.index;
-      this.isGamepadActive = true;
-      this.updateGamepadState();
-    });
-
-    window.addEventListener("gamepaddisconnected", () => {
-      this.isGamepadActive = false;
-      this.gamepadIndex = null;
-    });
+    this.forceControl = window.forceControl; 
+    this.lastUpdate = performance.now();
+    this.updateInterval = 16;
 
     this.leftStickX = 0;
     this.leftStickY = 0;
@@ -72,6 +64,18 @@ class TractUI {
     this._parameters = {};
 
     this._touchConstrictionIndices = [];
+
+    // Listen for gamepad events
+    window.addEventListener("gamepadconnected", (event) => {
+      this.gamepadIndex = event.gamepad.index;
+      this.isGamepadActive = true;
+      this.updateGamepadState();
+    });
+
+    window.addEventListener("gamepaddisconnected", () => {
+      this.isGamepadActive = false;
+      this.gamepadIndex = null;
+    });
 
     // AnimationFrame
     this._container.addEventListener("animationFrame", (event) => {
@@ -187,16 +191,85 @@ class TractUI {
 
     const gamepad = navigator.getGamepads()[this.gamepadIndex];
     if (!gamepad) {
+        requestAnimationFrame(() => this.updateGamepadState());
+        return;
+    }
+
+    const now = performance.now();
+    if (now - this.lastUpdate < this.updateInterval) {
+        requestAnimationFrame(() => this.updateGamepadState());
+        return;
+    }
+    this.lastUpdate = now;
+
+    // Check the global forceControl variable to decide which method to call
+    if (this.forceControl !== window.forceControl) {
+        this.forceControl = window.forceControl; // Update the cached value if changed
+    };
+
+    if (this.forceControl) {
+      this.updateGamepadState1(gamepad);
+    } else {
+      this.updateGamepadState2(gamepad);
+    }
+
+    requestAnimationFrame(() => this.updateGamepadState());
+  }
+
+  updateGamepadState1(gamepad) {
+  
+    const leftStickX = gamepad.axes[0] || 0; // Left stick horizontal axis
+    const leftStickY = gamepad.axes[1] || 0; // Left stick vertical axis
+  
+    const deadzone = 0.11; // Adjust the deadzone threshold as needed
+  
+    // Check if the joystick is within the deadzone
+    const isWithinDeadzone = Math.abs(leftStickX) < deadzone && Math.abs(leftStickY) < deadzone;
+    if (isWithinDeadzone) {
+      // If within deadzone, do not update the values, just re-call the animation frame
       requestAnimationFrame(() => this.updateGamepadState());
       return;
     }
+  
+    // Adjust these to control the sensitivity of movement
+    const velocityFactor = 0.01; // Smaller for finer control
+  
+    // Calculate change based on joystick movement
+    if (!this.lastTonguePosition) {
+      this.lastTonguePosition = { index: 22, diameter: 2 }; // Initialize to middle of tract
+    }
+  
+    // Apply changes
+    this.lastTonguePosition.index += leftStickX * velocityFactor * 44; // Assuming tract length is 44
+    this.lastTonguePosition.diameter += leftStickY * velocityFactor * 4; // Assuming max diameter is 4
+  
+    // Clamp values to ensure they remain within valid ranges
+    this.lastTonguePosition.index = Math.clamp(this.lastTonguePosition.index, 0, 44);
+    this.lastTonguePosition.diameter = Math.clamp(this.lastTonguePosition.diameter, 0, 4);
+  
+    const interpolationLeft = {
+      index: this.lastTonguePosition.index,
+      diameter: this.lastTonguePosition.diameter,
+      radius: Math.sqrt(leftStickX * leftStickX + leftStickY * leftStickY), // Calculate radius
+      angle: Math.atan2(leftStickY, leftStickX) // Calculate angle in radians
+    };
+  
+    this._container.dispatchEvent(new CustomEvent("gamepadInputTract", {
+      bubbles: true,
+      detail: interpolationLeft,
+    }));
+  
+    requestAnimationFrame(() => this.updateGamepadState());
+  }
+  
+  updateGamepadState2(gamepad) {
 
     const leftStickX = gamepad.axes[0] || 0; // Left stick horizontal axis
     const leftStickY = gamepad.axes[1] || 0; // Left stick vertical axis
 
     const interpolationLeft = {
-      index: Math.clamp((leftStickX + 1) / 2 * 44, 0, 44), // Assuming tract length is 44
-      diameter: Math.clamp((leftStickY + 1) / 2 * 4, 0, 4), // Assuming max diameter is 4
+      index: Math.clamp(Math.pow((leftStickX + 1) / 2, 2) * 44, 0, 44), 
+      diameter: Math.clamp((leftStickY + 1) / 2 * 4, 0, 4), 
       radius: Math.sqrt(leftStickX * leftStickX + leftStickY * leftStickY), // Calculate radius
       angle: Math.atan2(leftStickY, leftStickX) // Calculate angle in radians
     };

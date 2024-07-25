@@ -46,6 +46,12 @@ class GlottisUI {
         // Initialize gamepad state
         this.gamepadIndex = null;
         this.isGamepadActive = false;
+        this.lastFrequency = null;
+        this.lastTenseness = null;
+
+        this.forceControl = window.forceControl; // Cache the initial state of forceControl
+        this.lastUpdate = performance.now();
+        this.updateInterval = 16; // Update every 16 ms (~60 FPS)
 
         // Listen for gamepad events
         window.addEventListener("gamepadconnected", (event) => {
@@ -202,6 +208,82 @@ class GlottisUI {
             requestAnimationFrame(() => this.updateGamepadState());
             return;
         }
+
+        const now = performance.now();
+        if (now - this.lastUpdate < this.updateInterval) {
+            requestAnimationFrame(() => this.updateGamepadState());
+            return;
+        }
+        this.lastUpdate = now;
+
+        // Check the global forceControl variable to decide which method to call
+        if (this.forceControl !== window.forceControl) {
+            this.forceControl = window.forceControl; // Update the cached value if changed
+        }
+
+        if (this.forceControl) {
+            this.updateGamepadState1(gamepad);
+        } else {
+            this.updateGamepadState2(gamepad);
+        }
+
+        // Continue polling
+        requestAnimationFrame(() => this.updateGamepadState());
+    }
+
+    updateGamepadState1(gamepad) {
+
+        const rightStickX = gamepad.axes[2] || 0; // Right stick horizontal axis
+        const rightStickY = gamepad.axes[3] || 0; // Right stick vertical axis, invert this value
+
+        // Define the dead zone
+        const deadZone = 0.1;
+
+        // Apply the dead zone and invert the Y-axis
+        const processedX = Math.abs(rightStickX) > deadZone ? rightStickX : 0;
+        const processedY = Math.abs(rightStickY) > deadZone ? -rightStickY : 0; // Inverting Y-axis
+
+        // Adjust the velocity factor here for X-axis sensitivity
+        const velocityFactorX = 0.01;
+        const velocityFactorY = 0.07;
+
+        // Calculate the velocity based on joystick movement
+        const frequencyChange = processedX * velocityFactorX * this._frequency.range;
+        const tensenessChange = processedY * velocityFactorY;
+
+        // Update frequency and tenseness based on velocity
+        if (this.lastFrequency === null) {
+            this.lastFrequency = this._frequency.min + (this._frequency.range / 2); // Initialize with the middle value
+        }
+        if (this.lastTenseness === null) {
+            this.lastTenseness = 0.5; // Initialize with middle tenseness
+        }
+
+        // Apply the velocity changes
+        this.lastFrequency += frequencyChange;
+        this.lastTenseness += tensenessChange;
+
+        // Clamp the values to ensure they stay within valid ranges
+        this.lastFrequency = Math.clamp(this.lastFrequency, this._frequency.min, this._frequency.max);
+        this.lastTenseness = Math.clamp(this.lastTenseness, 0, 1);
+
+        // Dispatch the update event
+        const gamepadDetail = {
+            frequency: this.lastFrequency,
+            tenseness: this.lastTenseness,
+        };
+
+        console.log("Dispatching gamepadInputGlottis with frequency:", this.lastFrequency, "and tenseness:", this.lastTenseness);
+        this._container.dispatchEvent(new CustomEvent("gamepadInputGlottis", {
+            bubbles: true,
+            detail: gamepadDetail,
+        }));
+
+        // Continue polling
+        requestAnimationFrame(() => this.updateGamepadState());
+    }
+
+    updateGamepadState2(gamepad) {
 
         const rightStickX = gamepad.axes[2] || 0; // Right stick horizontal axis
         const rightStickY = gamepad.axes[3] || 0; // Right stick vertical axis
