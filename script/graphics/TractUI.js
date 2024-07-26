@@ -1,16 +1,16 @@
 class TractUI {
   constructor() {
 
-    this.snappingDistanceThreshold = 30;
+    this.snappingDistanceThreshold = 0.3;
     this._constrictions = new Map();
     this.initializeVowelPositions();
 
     // Initialize gamepad state
     this.gamepadIndex = null;
     this.isGamepadActive = false;
-    this.lastTonguePosition = null;
+    this.lastTonguePosition = { index: 22, diameter: 2 };
 
-    this.forceControl = window.forceControl; 
+    this.forceControl = window.forceControl;
     this.lastUpdate = performance.now();
     this.updateInterval = 16;
 
@@ -191,20 +191,21 @@ class TractUI {
 
     const gamepad = navigator.getGamepads()[this.gamepadIndex];
     if (!gamepad) {
-        requestAnimationFrame(() => this.updateGamepadState());
-        return;
+      requestAnimationFrame(() => this.updateGamepadState());
+      return;
     }
 
+    // Limit the update rate to the specified interval
     const now = performance.now();
     if (now - this.lastUpdate < this.updateInterval) {
-        requestAnimationFrame(() => this.updateGamepadState());
-        return;
+      requestAnimationFrame(() => this.updateGamepadState());
+      return;
     }
     this.lastUpdate = now;
 
     // Check the global forceControl variable to decide which method to call
     if (this.forceControl !== window.forceControl) {
-        this.forceControl = window.forceControl; // Update the cached value if changed
+      this.forceControl = window.forceControl;
     };
 
     if (this.forceControl) {
@@ -217,59 +218,69 @@ class TractUI {
   }
 
   updateGamepadState1(gamepad) {
-  
-    const leftStickX = gamepad.axes[0] || 0; // Left stick horizontal axis
-    const leftStickY = gamepad.axes[1] || 0; // Left stick vertical axis
-  
-    const deadzone = 0.11; // Adjust the deadzone threshold as needed
-  
+
+    const leftStickX = gamepad.axes[0] || 0;
+    const leftStickY = gamepad.axes[1] || 0;
+
+    const deadzone = 0.11;
+    const velocityFactor = 0.01;
+    const distances = this._isNearTongue(angle, radius);
+    const closeEnoughThreshold = 0.1;  // Define a threshold for snapping
+    const isCloseToVowel = distances.some(d => d.distance < closeEnoughThreshold);
+
     // Check if the joystick is within the deadzone
     const isWithinDeadzone = Math.abs(leftStickX) < deadzone && Math.abs(leftStickY) < deadzone;
     if (isWithinDeadzone) {
-      // If within deadzone, do not update the values, just re-call the animation frame
       requestAnimationFrame(() => this.updateGamepadState());
       return;
     }
-  
-    // Adjust these to control the sensitivity of movement
-    const velocityFactor = 0.01; // Smaller for finer control
-  
-    // Calculate change based on joystick movement
-    if (!this.lastTonguePosition) {
-      this.lastTonguePosition = { index: 22, diameter: 2 }; // Initialize to middle of tract
+
+    if (isCloseToVowel) {
+      // Snap to vowel based on proximity and weights
+      const weightedPositions = this._softmax(distances);
+      let weightedIndex = 0;
+      let weightedDiameter = 0;
+      weightedPositions.forEach(pos => {
+        weightedIndex += pos.index * pos.weight;
+        weightedDiameter += pos.diameter * pos.weight;
+      });
+
+      // Update the processor's tract tongue parameters
+      this._processor.tract.tongue.index = weightedIndex;
+      this._processor.tract.tongue.diameter = weightedDiameter;
+    } else {
+      // Apply joystick movements to tongue position directly if not snapping
+      this.lastTonguePosition.index += leftStickX * velocityFactor * 44; // Assuming tract length is 44
+      this.lastTonguePosition.diameter += leftStickY * velocityFactor * 4; // Assuming max diameter is 4
+
+      // Clamp values to ensure they remain within valid ranges
+      this.lastTonguePosition.index = Math.clamp(this.lastTonguePosition.index, 0, 44);
+      this.lastTonguePosition.diameter = Math.clamp(this.lastTonguePosition.diameter, 0, 4);
     }
-  
-    // Apply changes
-    this.lastTonguePosition.index += leftStickX * velocityFactor * 44; // Assuming tract length is 44
-    this.lastTonguePosition.diameter += leftStickY * velocityFactor * 4; // Assuming max diameter is 4
-  
-    // Clamp values to ensure they remain within valid ranges
-    this.lastTonguePosition.index = Math.clamp(this.lastTonguePosition.index, 0, 44);
-    this.lastTonguePosition.diameter = Math.clamp(this.lastTonguePosition.diameter, 0, 4);
-  
+
     const interpolationLeft = {
       index: this.lastTonguePosition.index,
       diameter: this.lastTonguePosition.diameter,
       radius: Math.sqrt(leftStickX * leftStickX + leftStickY * leftStickY), // Calculate radius
       angle: Math.atan2(leftStickY, leftStickX) // Calculate angle in radians
     };
-  
+
     this._container.dispatchEvent(new CustomEvent("gamepadInputTract", {
       bubbles: true,
       detail: interpolationLeft,
     }));
-  
+
     requestAnimationFrame(() => this.updateGamepadState());
   }
-  
+
   updateGamepadState2(gamepad) {
 
-    const leftStickX = gamepad.axes[0] || 0; // Left stick horizontal axis
-    const leftStickY = gamepad.axes[1] || 0; // Left stick vertical axis
+    const leftStickX = gamepad.axes[0] || 0;
+    const leftStickY = gamepad.axes[1] || 0;
 
     const interpolationLeft = {
-      index: Math.clamp(Math.pow((leftStickX + 1) / 2, 2) * 44, 0, 44), 
-      diameter: Math.clamp((leftStickY + 1) / 2 * 4, 0, 4), 
+      index: Math.clamp(Math.pow((leftStickX + 1) / 2, 2) * 44, 0, 44),
+      diameter: Math.clamp((leftStickY + 1) / 2 * 4, 0, 4),
       radius: Math.sqrt(leftStickX * leftStickX + leftStickY * leftStickY), // Calculate radius
       angle: Math.atan2(leftStickY, leftStickX) // Calculate angle in radians
     };
@@ -302,14 +313,14 @@ class TractUI {
     const sumExps = exps.reduce((a, b) => a + b, 0);
     return distances.map((d, i) => ({ ...d, weight: exps[i] / sumExps }));
   }
-  
+
   _setTongue(event, angle, radius) {
     // Calculate distances to each vowel position
     const distances = this._isNearTongue(angle, radius);
-  
+
     // Apply softmax to these distances to determine weights
     const weightedPositions = this._softmax(distances);
-  
+
     // Compute the weighted average position based on softmax outputs
     let weightedIndex = 0;
     let weightedDiameter = 0;
@@ -317,17 +328,17 @@ class TractUI {
       weightedIndex += pos.index * pos.weight;
       weightedDiameter += pos.diameter * pos.weight;
     });
-  
+
     // Create a position object with the computed weighted average index and diameter
     const newPosition = {
       index: weightedIndex,
       diameter: weightedDiameter
     };
-  
+
     // Update the processor's tract tongue parameters
     this._processor.tract.tongue.index = newPosition.index;
     this._processor.tract.tongue.diameter = newPosition.diameter;
-  
+
     // Dispatch the setParameterTract event for each parameter
     Object.keys(newPosition).forEach(parameterNameSuffix => {
       event.target.dispatchEvent(new CustomEvent("setParameterTract", {
@@ -338,12 +349,11 @@ class TractUI {
         },
       }));
     });
-  
-    // Redraw tract to reflect changes
+
     this._drawTract();
   }
-  
-    _startEvent(event) {
+
+  _startEvent(event) {
     const touchIdentifier = event instanceof Touch ? event.identifier : -1;
     if (this._touchConstrictionIndices[touchIdentifier] == undefined) {
       const position = this._getEventPosition(event);
@@ -381,7 +391,7 @@ class TractUI {
         // Update tongue position only if not set via gamepad
         if (!this.isGamepadActive) {
           this._setTongue(event, position);
-          
+
         }
       } else {
         event.target.dispatchEvent(
