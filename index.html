@@ -35,7 +35,7 @@
         #controlMode {
             position: fixed;
             top: auto;
-            margin-top: 180px;
+            margin-top: 300px;
             right: 10px;
             z-index: 100;
             background: rgba(0, 0, 0, 0.6);
@@ -68,6 +68,10 @@
         <p>Tenseness: <span id="tenseness">--</span></p>
         <p>Radius: <span id="radius">--</span></p>
         <p>Angle: <span id="angle">--</span></p>
+        <p>Index: <span id="index">--</span></p>
+        <p>Diameter: <span id="diameter">--</span></p>
+        <p>X: <span id="X">--</span></p>
+        <p>Y: <span id="Y">--</span></p>
     </div>
 
     <div id="controlMode">
@@ -116,6 +120,10 @@
         const tensenessElement = document.getElementById("tenseness");
         const radiusElement = document.getElementById("radius");
         const angleElement = document.getElementById("angle");
+        const indexElement = document.getElementById("index");
+        const diameterElement = document.getElementById("diameter");
+        const XElement = document.getElementById("X");
+        const YElement = document.getElementById("Y");
 
         pinkTromboneElement.addEventListener("load", async () => {
             await pinkTromboneElement.setAudioContext();
@@ -157,6 +165,7 @@
             pinkTromboneElement.parameters.frequency.value = frequency;
             pinkTromboneElement.parameters.tenseness.value = tenseness;
 
+
             pinkTromboneElement.parameters.frequency.linearRampToValueAtTime(
                 frequency,
                 pinkTromboneElement.audioContext.currentTime + 0.1
@@ -175,7 +184,7 @@
         pinkTromboneElement.addEventListener("gamepadInputTract", (event) => {
             console.log("Received gamepadInputTract event:", event.detail);
 
-            const { index, diameter, radius, angle } = event.detail;
+            const { index, diameter, radius, angle, X, Y } = event.detail;
 
             pinkTromboneElement.parameters.tongue.index.value = index;
             pinkTromboneElement.parameters.tongue.diameter.value = diameter;
@@ -191,7 +200,11 @@
 
             // Update the displayed values
             radiusElement.textContent = radius.toFixed(2);
-            angleElement.textContent = (angle * (180 / Math.PI)).toFixed(2); // Convert angle to degrees
+            angleElement.textContent = angle.toFixed(2);
+            indexElement.textContent = index.toFixed(2);
+            diameterElement.textContent = diameter.toFixed(2);
+            XElement.textContent = X.toFixed(2);
+            YElement.textContent = Y.toFixed(2);
         });
     </script>
 
