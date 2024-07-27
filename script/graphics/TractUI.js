@@ -3,7 +3,6 @@ class TractUI {
 
     this.snappingDistanceThreshold = 0.3;
     this._constrictions = new Map();
-    this.initializeVowelPositions();
 
     // Initialize gamepad state
     this.gamepadIndex = null;
@@ -171,20 +170,20 @@ class TractUI {
     });
   }
 
-  initializeVowelPositions() {
-    this.vowelPositions = [
-      { angle: 15, radius: 0.6 * 1.5 + 2, phoneme: "æ" }, // pat
-      { angle: 13, radius: 0.27 * 1.5 + 2, phoneme: "a" }, // part
-      { angle: 12, radius: 0 * 1.5 + 2, phoneme: "ɒ" }, // pot
-      { angle: 17.7, radius: 0.05 * 1.5 + 2, phoneme: "(ɔ)" }, // port (rounded)
-      { angle: 27, radius: 0.65 * 1.5 + 2, phoneme: "ɪ" }, // pit
-      { angle: 27.4, radius: 0.21 * 1.5 + 2, phoneme: "i" }, // peat
-      { angle: 20, radius: 1.0 * 1.5 + 2, phoneme: "e" }, // pet
-      { angle: 18.1, radius: 0.37 * 1.5 + 2, phoneme: "ʌ" }, // putt
-      { angle: 23, radius: 0.1 * 1.5 + 2, phoneme: "(u)" }, // poot (rounded)
-      { angle: 21, radius: 0.6 * 1.5 + 2, phoneme: "ə" }  // pert [should be ɜ]
-    ];
-  }
+  // initializeVowelPositions() {
+  //   this.vowelPositions = [
+  //     { angle: 15, radius: 2.9, phoneme: "æ" }, // pat
+  //     { angle: 13, radius: 2.405, phoneme: "a" }, // part
+  //     { angle: 12, radius: 0 * 1.5 + 2, phoneme: "ɒ" }, // pot
+  //     { angle: 17.7, radius: 0.05 * 1.5 + 2, phoneme: "(ɔ)" }, // port (rounded)
+  //     { angle: 27, radius: 0.65 * 1.5 + 2, phoneme: "ɪ" }, // pit
+  //     { angle: 27.4, radius: 0.21 * 1.5 + 2, phoneme: "i" }, // peat
+  //     { angle: 20, radius: 1.0 * 1.5 + 2, phoneme: "e" }, // pet
+  //     { angle: 18.1, radius: 0.37 * 1.5 + 2, phoneme: "ʌ" }, // putt
+  //     { angle: 23, radius: 0.1 * 1.5 + 2, phoneme: "(u)" }, // poot (rounded)
+  //     { angle: 21, radius: 2.9, phoneme: "ə" }  // pert [should be ɜ]
+  //   ];
+  // }
 
   updateGamepadState() {
     if (!this.isGamepadActive || this.gamepadIndex === null) return;
@@ -217,6 +216,13 @@ class TractUI {
     requestAnimationFrame(() => this.updateGamepadState());
   }
 
+  closestVowel(angle, radius) {
+    const distances = this._isNearTongue(angle, radius);
+    const closestVowel = distances.reduce((prev, current) => (prev.distance < current.distance ? prev : current)).vowel;
+    return closestVowel;
+  }
+
+
   updateGamepadState1(gamepad) {
 
     const leftStickX = gamepad.axes[0] || 0;
@@ -227,8 +233,9 @@ class TractUI {
     const angle = this._getAngle(this.lastTonguePosition.index, this.lastTonguePosition.diameter);
     const radius = this._getRadius(this.lastTonguePosition.index, this.lastTonguePosition.diameter);
     const distances = this._isNearTongue(angle, radius);
-    const closeEnoughThreshold = 0.1;  // Define a threshold for snapping
+    const closeEnoughThreshold = 10;  // Define a threshold for snapping
     const isCloseToVowel = distances.some(d => d.distance < closeEnoughThreshold);
+    const closestVowel = this.closestVowel(angle, radius);
 
     // Check if the joystick is within the deadzone
     const isWithinDeadzone = Math.abs(leftStickX) < deadzone && Math.abs(leftStickY) < deadzone;
@@ -248,9 +255,12 @@ class TractUI {
       });
 
       // Update the processor's tract tongue parameters
-      this._processor.tract.tongue.index = weightedIndex;
-      this._processor.tract.tongue.diameter = weightedDiameter;
-      
+      this.lastTonguePosition.index = weightedIndex;
+      this.lastTonguePosition.diameter = weightedDiameter;
+
+      this.lastTonguePosition.index = Math.clamp(this.lastTonguePosition.index, 0, 44);
+      this.lastTonguePosition.diameter = Math.clamp(this.lastTonguePosition.diameter, 0, 4);
+
     } else {
       // Apply joystick movements to tongue position directly if not snapping
       this.lastTonguePosition.index += leftStickX * velocityFactor * 44; // Assuming tract length is 44
@@ -264,10 +274,13 @@ class TractUI {
     const interpolationLeft = {
       index: this.lastTonguePosition.index,
       diameter: this.lastTonguePosition.diameter,
-      radius: Math.sqrt(leftStickX * leftStickX + leftStickY * leftStickY), // Calculate radius
-      angle: Math.atan2(leftStickY, leftStickX), // Calculate angle in radians
+      radius : this._getRadius(this.lastTonguePosition.index, this.lastTonguePosition.diameter),
+      angle : this._getAngle(this.lastTonguePosition.index, this.lastTonguePosition.diameter),
+      // radius: Math.sqrt(leftStickX * leftStickX + leftStickY * leftStickY), // Calculate radius
+      // angle: Math.atan2(leftStickY, leftStickX), // Calculate angle in radians
       X: this._getX(this.lastTonguePosition.index, this.lastTonguePosition.diameter),
-      Y: this._getY(this.lastTonguePosition.index, this.lastTonguePosition.diameter)
+      Y: this._getY(this.lastTonguePosition.index, this.lastTonguePosition.diameter),
+      closestVowel: closestVowel,
     };
 
     this._container.dispatchEvent(new CustomEvent("gamepadInputTract", {
@@ -305,11 +318,17 @@ class TractUI {
 
   _isNearTongue(angle, radius) {
     const distances = [];
+    const tongueX = this._getX(angle, radius);
+    const tongueY = this._getY(angle, radius);
     for (const vowelPos of this.vowelPositions) {
+      // const x = this._getX(vowelPos.angle, vowelPos.radius);
+      // const y = this._getY(vowelPos.angle, vowelPos.radius);
+      // const distance = Math.sqrt((tongueX - x) * (tongueX - x) + (tongueY - y) * (tongueY - y));
       const angleDifference = Math.abs(vowelPos.angle - angle);
       const radiusDifference = Math.abs(vowelPos.radius - radius);
       const distance = Math.sqrt(angleDifference * angleDifference + radiusDifference * radiusDifference);
-      distances.push({ distance, index: vowelPos.index, diameter: vowelPos.diameter });
+      const vowel = vowelPos.phoneme;
+      distances.push({ distance, index: vowelPos.index, diameter: vowelPos.diameter, vowel });
     }
     return distances;
   }
@@ -321,43 +340,18 @@ class TractUI {
     return distances.map((d, i) => ({ ...d, weight: exps[i] / sumExps }));
   }
 
-  _setTongue(event, angle, radius) {
-    // Calculate distances to each vowel position
-    const distances = this._isNearTongue(angle, radius);
-
-    // Apply softmax to these distances to determine weights
-    const weightedPositions = this._softmax(distances);
-
-    // Compute the weighted average position based on softmax outputs
-    let weightedIndex = 0;
-    let weightedDiameter = 0;
-    weightedPositions.forEach(pos => {
-      weightedIndex += pos.index * pos.weight;
-      weightedDiameter += pos.diameter * pos.weight;
+  _setTongue(event, position) {
+    Object.keys(position).forEach((parameterNameSuffix) => {
+      event.target.dispatchEvent(
+        new CustomEvent("setParameter", {
+          bubbles: true,
+          detail: {
+            parameterName: "tongue." + parameterNameSuffix,
+            newValue: position[parameterNameSuffix],
+          },
+        })
+      );
     });
-
-    // Create a position object with the computed weighted average index and diameter
-    const newPosition = {
-      index: weightedIndex,
-      diameter: weightedDiameter
-    };
-
-    // Update the processor's tract tongue parameters
-    this._processor.tract.tongue.index = newPosition.index;
-    this._processor.tract.tongue.diameter = newPosition.diameter;
-
-    // Dispatch the setParameterTract event for each parameter
-    Object.keys(newPosition).forEach(parameterNameSuffix => {
-      event.target.dispatchEvent(new CustomEvent("setParameterTract", {
-        bubbles: true,
-        detail: {
-          parameterName: "tongue." + parameterNameSuffix,
-          newValue: newPosition[parameterNameSuffix],
-        },
-      }));
-    });
-
-    this._drawTract();
   }
 
   _startEvent(event) {

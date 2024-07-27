@@ -35,7 +35,7 @@
         #controlMode {
             position: fixed;
             top: auto;
-            margin-top: 300px;
+            margin-top: 320px;
             right: 10px;
             z-index: 100;
             background: rgba(0, 0, 0, 0.6);
@@ -72,6 +72,7 @@
         <p>Diameter: <span id="diameter">--</span></p>
         <p>X: <span id="X">--</span></p>
         <p>Y: <span id="Y">--</span></p>
+        <p>Closest Vowel: <span id="closestVowel">--</span></p>
     </div>
 
     <div id="controlMode">
@@ -84,33 +85,33 @@
         window.forceControl = true; // Initialize forceControl to false
         let lastButtonPressTime = 0; // Time of the last button press
         const debounceInterval = 500; // Time in milliseconds to debounce the button press
-    
+
         // Function to update the control mode text
         function updateControlMode() {
             const controlModeText = document.getElementById("controlModeText");
             controlModeText.textContent = forceControl ? "Force Control On" : "Position Control On";
         }
-    
+
         // Add event listener for gamepad button three
         window.addEventListener("gamepadconnected", function () {
             function checkGamepad() {
                 const gamepad = navigator.getGamepads()[0]; // Assume the first gamepad
                 if (!gamepad) return;
-    
+
                 const currentTime = Date.now(); // Get the current time
-    
+
                 // Check if button three is pressed and enough time has elapsed since the last press
                 if (gamepad.buttons[3].pressed && (currentTime - lastButtonPressTime > debounceInterval)) {
                     forceControl = !forceControl; // Toggle force control
                     updateControlMode(); // Update the display
                     lastButtonPressTime = currentTime; // Update the last button press time
                 }
-    
+
                 requestAnimationFrame(checkGamepad); // Keep checking for button press
             }
             requestAnimationFrame(checkGamepad);
         });
-    
+
         updateControlMode(); // Initial update for the control mode display
     </script>
 
@@ -124,6 +125,7 @@
         const diameterElement = document.getElementById("diameter");
         const XElement = document.getElementById("X");
         const YElement = document.getElementById("Y");
+        const closestVowelElement = document.getElementById("closestVowel");
 
         pinkTromboneElement.addEventListener("load", async () => {
             await pinkTromboneElement.setAudioContext();
@@ -143,16 +145,16 @@
             //     }
             // });
 
-            // // Listen for parameter updates from TractUI
-            // pinkTromboneElement.addEventListener("setParameterTract", (event) => {
-            //     const { parameterName, newValue } = event.detail;
-            //     console.log(`TractUI setParameterTract: ${parameterName} = ${newValue}`);
-            //     if (parameterName === "tongue.index") {
-            //         radiusElement.textContent = newValue.toFixed(2);
-            //     } else if (parameterName === "tongue.diameter") {
-            //         angleElement.textContent = newValue.toFixed(2);
-            //     }
-            // });
+            // Listen for parameter updates from TractUI
+            pinkTromboneElement.addEventListener("setParameter", (event) => {
+                const { parameterName, newValue } = event.detail;
+                console.log(`TractUI setParameterTract: ${parameterName} = ${newValue}`);
+                if (parameterName === "tongue.index") {
+                    radiusElement.textContent = newValue.toFixed(2);
+                } else if (parameterName === "tongue.diameter") {
+                    angleElement.textContent = newValue.toFixed(2);
+                }
+            });
         });
 
         // Event listener for glottis gamepad input
@@ -184,7 +186,7 @@
         pinkTromboneElement.addEventListener("gamepadInputTract", (event) => {
             console.log("Received gamepadInputTract event:", event.detail);
 
-            const { index, diameter, radius, angle, X, Y } = event.detail;
+            const { index, diameter, radius, angle, X, Y, closestVowel } = event.detail;
 
             pinkTromboneElement.parameters.tongue.index.value = index;
             pinkTromboneElement.parameters.tongue.diameter.value = diameter;
@@ -205,7 +207,18 @@
             diameterElement.textContent = diameter.toFixed(2);
             XElement.textContent = X.toFixed(2);
             YElement.textContent = Y.toFixed(2);
+            closestVowelElement.textContent = closestVowel;
         });
+
+        // Event listener for tract gamepad input
+        pinkTromboneElement.addEventListener("closestVowelDispatch", (event) => {
+            console.log("Received closestVowelDispatch event:", event.detail);
+
+            const { closestVowel } = event.detail;
+
+            closestVowelElement.textContent = closestVowel.toFixed(2);
+        });
+
     </script>
 
     <script>
