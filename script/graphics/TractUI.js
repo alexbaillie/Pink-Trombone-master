@@ -8,6 +8,7 @@ class TractUI {
     this.gamepadIndex = null;
     this.isGamepadActive = false;
     this.lastTonguePosition = { index: 22, diameter: 2 };
+    //this.closestVowel = null;
 
     this.forceControl = window.forceControl;
     this.lastUpdate = performance.now();
@@ -168,6 +169,8 @@ class TractUI {
     this._canvases.tract.addEventListener("didRemoveConstriction", (event) => {
       this._touchConstrictionIndices[event.detail.touchIdentifier] = undefined;
     });
+
+    requestAnimationFrame(() => this.updateVowelDisplay());
   }
 
   // initializeVowelPositions() {
@@ -184,6 +187,21 @@ class TractUI {
   //     { angle: 21, radius: 2.9, phoneme: "ə" }  // pert [should be ɜ]
   //   ];
   // }
+
+  updateVowelDisplay() {
+    const angle = this._getAngle(this.lastTonguePosition.index, this.lastTonguePosition.diameter);
+    const radius = this._getRadius(this.lastTonguePosition.index, this.lastTonguePosition.diameter);
+
+    const closestVowel = this.closestVowel(angle, radius);
+    
+    // Create a custom event that carries the closest vowel
+    const event = new CustomEvent("closestVowelDispatch", {
+        detail: { closestVowel }
+    });
+    this._container.dispatchEvent(event);
+
+    requestAnimationFrame(() => this.updateVowelDisplay()); // Ensure continuous updates
+}
 
   updateGamepadState() {
     if (!this.isGamepadActive || this.gamepadIndex === null) return;
@@ -341,6 +359,7 @@ class TractUI {
   }
 
   _setTongue(event, position) {
+    const closestVowel = this.closestVowel(this._getAngle(position.index), this._getRadius(position.index, position.diameter));
     Object.keys(position).forEach((parameterNameSuffix) => {
       event.target.dispatchEvent(
         new CustomEvent("setParameter", {
@@ -348,6 +367,7 @@ class TractUI {
           detail: {
             parameterName: "tongue." + parameterNameSuffix,
             newValue: position[parameterNameSuffix],
+            closestVowel: closestVowel,
           },
         })
       );
@@ -979,20 +999,6 @@ class TractUI {
       diameter: this._getDiameter(x, y),
     };
   }
-
-  // _setTongue(event, position) {
-  //   Object.keys(position).forEach((parameterNameSuffix) => {
-  //     event.target.dispatchEvent(
-  //       new CustomEvent("setParameterTract", {
-  //         bubbles: true,
-  //         detail: {
-  //           parameterName: "tongue." + parameterNameSuffix,
-  //           newValue: position[parameterNameSuffix],
-  //         },
-  //       })
-  //     );
-  //   });
-  // }
 
   _endEvent(event) {
     const touchIdentifier = event instanceof Touch ? event.identifier : -1;

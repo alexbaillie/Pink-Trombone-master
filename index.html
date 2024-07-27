@@ -145,8 +145,16 @@
             //     }
             // });
 
+                // Listen for the custom event on the pink-trombone element
+                pinkTromboneElement.addEventListener("closestVowelDispatch", (event) => {
+                    const closestVowel = event.detail.closestVowel; // Access the closest vowel from the event detail
+                    closestVowelElement.textContent = closestVowel; // Update the text content of the closestVowel element in the HTML
+                });
+
+
             // Listen for parameter updates from TractUI
             pinkTromboneElement.addEventListener("setParameter", (event) => {
+                closestVowelElement.textContent = event.detail.closestVowel;
                 const { parameterName, newValue } = event.detail;
                 console.log(`TractUI setParameterTract: ${parameterName} = ${newValue}`);
                 if (parameterName === "tongue.index") {
