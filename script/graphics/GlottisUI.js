@@ -273,7 +273,7 @@ class GlottisUI {
             tenseness: this.lastTenseness,
         };
 
-        console.log("Dispatching gamepadInputGlottis with frequency:", this.lastFrequency, "and tenseness:", this.lastTenseness);
+        //console.log("Dispatching gamepadInputGlottis with frequency:", this.lastFrequency, "and tenseness:", this.lastTenseness);
         this._container.dispatchEvent(new CustomEvent("gamepadInputGlottis", {
             bubbles: true,
             detail: gamepadDetail,

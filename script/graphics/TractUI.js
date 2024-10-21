@@ -173,20 +173,6 @@ class TractUI {
     requestAnimationFrame(() => this.updateVowelDisplay());
   }
 
-  // initializeVowelPositions() {
-  //   this.vowelPositions = [
-  //     { angle: 15, radius: 2.9, phoneme: "æ" }, // pat
-  //     { angle: 13, radius: 2.405, phoneme: "a" }, // part
-  //     { angle: 12, radius: 0 * 1.5 + 2, phoneme: "ɒ" }, // pot
-  //     { angle: 17.7, radius: 0.05 * 1.5 + 2, phoneme: "(ɔ)" }, // port (rounded)
-  //     { angle: 27, radius: 0.65 * 1.5 + 2, phoneme: "ɪ" }, // pit
-  //     { angle: 27.4, radius: 0.21 * 1.5 + 2, phoneme: "i" }, // peat
-  //     { angle: 20, radius: 1.0 * 1.5 + 2, phoneme: "e" }, // pet
-  //     { angle: 18.1, radius: 0.37 * 1.5 + 2, phoneme: "ʌ" }, // putt
-  //     { angle: 23, radius: 0.1 * 1.5 + 2, phoneme: "(u)" }, // poot (rounded)
-  //     { angle: 21, radius: 2.9, phoneme: "ə" }  // pert [should be ɜ]
-  //   ];
-  // }
 
   updateVowelDisplay() {
     const angle = this._getAngle(this.lastTonguePosition.index, this.lastTonguePosition.diameter);
@@ -234,9 +220,10 @@ class TractUI {
     requestAnimationFrame(() => this.updateGamepadState());
   }
 
-  closestVowel(angle, radius) {
-    const distances = this._isNearTongue(angle, radius);
+  closestVowel(index, diameter) {
+    const distances = this._isNearTongue(null, null, index, diameter);
     const closestVowel = distances.reduce((prev, current) => (prev.distance < current.distance ? prev : current)).vowel;
+    console.log('closestVowel' + closestVowel);
     return closestVowel;
   }
 
@@ -250,10 +237,10 @@ class TractUI {
     const velocityFactor = 0.01;
     const angle = this._getAngle(this.lastTonguePosition.index, this.lastTonguePosition.diameter);
     const radius = this._getRadius(this.lastTonguePosition.index, this.lastTonguePosition.diameter);
-    const distances = this._isNearTongue(angle, radius);
-    const closeEnoughThreshold = 10;  // Define a threshold for snapping
+    const distances = this._isNearTongue(angle, radius, this.lastTonguePosition.index, this.lastTonguePosition.diameter);
+    const closeEnoughThreshold = 0.25;  // Define a threshold for snapping
     const isCloseToVowel = distances.some(d => d.distance < closeEnoughThreshold);
-    const closestVowel = this.closestVowel(angle, radius);
+    const closestVowel = this.closestVowel(this.lastTonguePosition.index, this.lastTonguePosition.diameter); //for debubgging
 
     // Check if the joystick is within the deadzone
     const isWithinDeadzone = Math.abs(leftStickX) < deadzone && Math.abs(leftStickY) < deadzone;
@@ -276,16 +263,16 @@ class TractUI {
       this.lastTonguePosition.index = weightedIndex;
       this.lastTonguePosition.diameter = weightedDiameter;
 
-      this.lastTonguePosition.index = Math.clamp(this.lastTonguePosition.index, 0, 44);
+      this.lastTonguePosition.index = Math.clamp(this.lastTonguePosition.index, 12, 28);
       this.lastTonguePosition.diameter = Math.clamp(this.lastTonguePosition.diameter, 0, 4);
 
     } else {
       // Apply joystick movements to tongue position directly if not snapping
-      this.lastTonguePosition.index += leftStickX * velocityFactor * 44; // Assuming tract length is 44
+      this.lastTonguePosition.index += leftStickX * velocityFactor * 28; // Assuming tract length is 44
       this.lastTonguePosition.diameter += leftStickY * velocityFactor * 4; // Assuming max diameter is 4
 
       // Clamp values to ensure they remain within valid ranges
-      this.lastTonguePosition.index = Math.clamp(this.lastTonguePosition.index, 0, 44);
+      this.lastTonguePosition.index = Math.clamp(this.lastTonguePosition.index, 12, 28);
       this.lastTonguePosition.diameter = Math.clamp(this.lastTonguePosition.diameter, 0, 4);
     }
 
@@ -294,8 +281,6 @@ class TractUI {
       diameter: this.lastTonguePosition.diameter,
       radius : this._getRadius(this.lastTonguePosition.index, this.lastTonguePosition.diameter),
       angle : this._getAngle(this.lastTonguePosition.index, this.lastTonguePosition.diameter),
-      // radius: Math.sqrt(leftStickX * leftStickX + leftStickY * leftStickY), // Calculate radius
-      // angle: Math.atan2(leftStickY, leftStickX), // Calculate angle in radians
       X: this._getX(this.lastTonguePosition.index, this.lastTonguePosition.diameter),
       Y: this._getY(this.lastTonguePosition.index, this.lastTonguePosition.diameter),
       closestVowel: closestVowel,
@@ -315,7 +300,7 @@ class TractUI {
     const leftStickY = gamepad.axes[1] || 0;
 
     const interpolationLeft = {
-      index: Math.clamp(Math.pow((leftStickX + 1) / 2, 2) * 44, 0, 44),
+      index: Math.clamp(Math.pow((leftStickX + 1) / 2, 2) * 28, 12, 28),
       diameter: Math.clamp((leftStickY + 1) / 2 * 4, 0, 4),
       radius: Math.sqrt(leftStickX * leftStickX + leftStickY * leftStickY), // Calculate radius
       angle: Math.atan2(leftStickY, leftStickX), // Calculate angle in radians
@@ -334,19 +319,23 @@ class TractUI {
     requestAnimationFrame(() => this.updateGamepadState());
   }
 
-  _isNearTongue(angle, radius) {
+  _isNearTongue(angle, radius, index, diameter) {
     const distances = [];
     const tongueX = this._getX(angle, radius);
     const tongueY = this._getY(angle, radius);
     for (const vowelPos of this.vowelPositions) {
-      // const x = this._getX(vowelPos.angle, vowelPos.radius);
-      // const y = this._getY(vowelPos.angle, vowelPos.radius);
-      // const distance = Math.sqrt((tongueX - x) * (tongueX - x) + (tongueY - y) * (tongueY - y));
-      const angleDifference = Math.abs(vowelPos.angle - angle);
-      const radiusDifference = Math.abs(vowelPos.radius - radius);
+      console.log('vowelPos angle' + vowelPos.angle);
+      console.log('vowelPos radius' + vowelPos.radius);
+      console.log('tongue angle' + angle);
+      console.log('tongue radius' + radius);
+      console.log('tongue index' + index);
+      console.log('tongue diameter' + diameter);
+      const angleDifference = Math.abs(vowelPos.angle - index);
+      const radiusDifference = Math.abs(vowelPos.radius - diameter);
       const distance = Math.sqrt(angleDifference * angleDifference + radiusDifference * radiusDifference);
+      console.log('distance' + distance);
       const vowel = vowelPos.phoneme;
-      distances.push({ distance, index: vowelPos.index, diameter: vowelPos.diameter, vowel });
+      distances.push({ distance, index: vowelPos.angle, diameter: vowelPos.radius, vowel });
     }
     return distances;
   }
@@ -359,7 +348,7 @@ class TractUI {
   }
 
   _setTongue(event, position) {
-    const closestVowel = this.closestVowel(this._getAngle(position.index), this._getRadius(position.index, position.diameter));
+    const closestVowel = this.closestVowel(this.lastTonguePosition.index, this.lastTonguePosition.diameter);
     Object.keys(position).forEach((parameterNameSuffix) => {
       event.target.dispatchEvent(
         new CustomEvent("setParameter", {
@@ -847,7 +836,7 @@ class TractUI {
     this._context.globalAlpha = 0.6;
 
     this.vowelPositions = [];
-
+    // Each vowel has an index, diameter, and phoneme
     [
       [15, 0.6, "æ"], // pat
       [13, 0.27, "a"], // part
